@@ -1,12 +1,13 @@
 import os
 import asyncio
+import datetime
+import smtplib
 from bs4 import BeautifulSoup
 from email.message import EmailMessage
-import smtplib
-import datetime
 from playwright.async_api import async_playwright
+from playwright_stealth import stealth_async
 
-# --- SETTINGS ---
+# --- CONFIGURATION ---
 URL = "https://www.trasparenzascuole.it/Public/APDPublic_ExtV2.aspx?CF=91040430190"
 KEYWORDS = [
     "madrelingua",
@@ -20,18 +21,17 @@ EMAIL_SENDER = os.environ["EMAIL_SENDER"]
 EMAIL_PASSWORD = os.environ["EMAIL_PASSWORD"]
 EMAIL_RECEIVER = os.environ["EMAIL_RECEIVER"]
 
-# --- PARSE & MATCH ---
+# --- HTML SCRAPING & MATCHING ---
 def parse_and_collect(html):
-    matches = []
     soup = BeautifulSoup(html, "html.parser")
+    matches = []
 
-    # DEBUG: dump the first 2000 characters of text seen by the scraper
     print("\n--- PAGE TEXT START ---\n")
-    print(soup.get_text(strip=True)[:2000])
+    print(soup.get_text(strip=True)[:2000])  # Show first 2000 chars
     print("\n--- PAGE TEXT END ---\n")
 
     for text in soup.find_all(string=True):
-        if any(keyword.lower() in text.lower() for keyword in KEYWORDS):
+        if any(k.lower() in text.lower() for k in KEYWORDS):
             cleaned = text.strip()
             if cleaned and cleaned not in matches:
                 matches.append(cleaned)
@@ -39,7 +39,7 @@ def parse_and_collect(html):
     print(f"✔️ Found {len(matches)} match(es): {matches}")
     return matches
 
-# --- SCRAPE FUNCTION ---
+# --- SCRAPER FUNCTION ---
 async def scrape_pages():
     all_matches = []
 
@@ -48,20 +48,24 @@ async def scrape_pages():
         context = await browser.new_context()
         page = await context.new_page()
 
-        await page.goto(URL, wait_until="domcontentloaded", timeout=60000)
+        await stealth_async(page)  # 👈 Cloudflare stealth bypass
 
-        # Wait 5 seconds to allow JS to render the table
-        await page.wait_for_timeout(5000)
+        print("▶️ Navigating to site...")
+        await page.goto(URL, timeout=90000)
+
+        try:
+            # Wait for real page content
+            await page.wait_for_selector("text=Protocollo", timeout=20000)
+        except:
+            print("⚠️ Timed out waiting for page content. Cloudflare may still be blocking.")
 
         html = await page.content()
         all_matches.extend(parse_and_collect(html))
-
-        # Pagination logic can go here if needed — skipping for now
-
         await browser.close()
+
     return list(set(all_matches))
 
-# --- EMAIL FUNCTION ---
+# --- EMAIL SENDER ---
 def send_email(matches):
     if matches:
         subject = f"[Monitor] FOUND matches – {datetime.datetime.now():%Y-%m-%d %H:%M}"
