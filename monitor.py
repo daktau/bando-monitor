@@ -33,7 +33,7 @@ async def scrape_pages():
         context = await browser.new_context()
         page = await context.new_page()
 
-        await page.goto(URL, wait_until="networkidle")
+        await page.goto(URL, wait_until="domcontentloaded", timeout=60000)
 
         # First page
         html = await page.content()
