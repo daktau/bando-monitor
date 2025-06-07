@@ -37,16 +37,16 @@ def parse_and_collect(soup):
     return matches
 
 def paginate_and_scrape():
-    """This saves the page content to a file during the first request. This can be viewed via GitHub Actions' logs or use it locally to inspect what the page actually returned."""
-    with open("debug.html", "w", encoding="utf-8") as f:
-        f.write(resp.text)
-
-
     """Iterate over all pages and collect results."""
     session = requests.Session()
     results = []
 
     resp = session.get(URL)
+
+    """This saves the page content to a file during the first request. This can be viewed via GitHub Actions' logs or use it locally to inspect what the page actually returned."""
+    with open("debug.html", "w", encoding="utf-8") as f:
+        f.write(resp.text)
+    
     with open("debug.html", "w", encoding="utf-8") as f:
         f.write(resp.text)
     soup = BeautifulSoup(resp.text, "html.parser")
