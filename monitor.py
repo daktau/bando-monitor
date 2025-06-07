@@ -42,7 +42,7 @@ async def scrape_pages():
         page = await context.new_page()
 
         await page.goto(URL, wait_until="domcontentloaded", timeout=60000)
-        await page.wait_for_selector("table", timeout=10000)  # Wait for main table
+        await page.wait_for_selector("div.albo-on-line-table", timeout=15000)  # Wait for main content container
         
         # First page
         html = await page.content()
