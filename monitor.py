@@ -29,6 +29,7 @@ def parse_and_collect(html):
             cleaned = text.strip()
             if cleaned and cleaned not in matches:
                 matches.append(cleaned)
+            print(f"✔️ Found {len(matches)} match(es):", matches)
     return matches
 
 
