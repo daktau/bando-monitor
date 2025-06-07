@@ -8,7 +8,7 @@ from playwright.async_api import async_playwright
 
 # --- SETTINGS ---
 URL = "https://www.trasparenzascuole.it/Public/APDPublic_ExtV2.aspx?CF=91040430190"
-KEYWORDS = ["madrelingua", "inglese", "bando", "liquidazione", "compensi"]
+KEYWORDS = ["madrelingua", "inglese", "bando", "Oggetto: Graduatorie interne d'istituto definitive personale docente"]
 
 EMAIL_SENDER = os.environ["EMAIL_SENDER"]
 EMAIL_PASSWORD = os.environ["EMAIL_PASSWORD"]
