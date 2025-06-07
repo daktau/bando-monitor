@@ -47,6 +47,8 @@ def paginate_and_scrape():
     results = []
 
     resp = session.get(URL)
+    with open("debug.html", "w", encoding="utf-8") as f:
+        f.write(resp.text)
     soup = BeautifulSoup(resp.text, "html.parser")
     results.extend(parse_and_collect(soup))
 
