@@ -1,0 +1,29 @@
+name: Run Trasparenza Monitor
+
+on:
+  schedule:
+    - cron: '0 11,21 * * *'  # Runs at 11:00 and 21:00 UTC every day
+  workflow_dispatch:       # Allow manual run
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: pip install requests beautifulsoup4
+
+    - name: Run the script
+      env:
+        EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+        EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+        EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
+      run: python monitor.py
