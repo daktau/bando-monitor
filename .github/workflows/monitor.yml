@@ -1,4 +1,4 @@
-name: Run Trasparenza Monitor
+name: Run Bando Monitor
 
 on:
   schedule:
