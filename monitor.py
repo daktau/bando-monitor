@@ -8,20 +8,26 @@ from playwright.async_api import async_playwright
 
 # --- SETTINGS ---
 URL = "https://www.trasparenzascuole.it/Public/APDPublic_ExtV2.aspx?CF=91040430190"
-KEYWORDS = ["madrelingua", "inglese", "bando", "Oggetto: Graduatorie interne d'istituto definitive personale docente", "Pubblicato"]
+KEYWORDS = [
+    "madrelingua",
+    "inglese",
+    "liquidazione",
+    "compensi",
+    "DETERMINA_A_CONTRARRE_PER_ACQUISTO_N._24_PC_PER_LAB._6.pdf"
+]
 
 EMAIL_SENDER = os.environ["EMAIL_SENDER"]
 EMAIL_PASSWORD = os.environ["EMAIL_PASSWORD"]
 EMAIL_RECEIVER = os.environ["EMAIL_RECEIVER"]
 
-
+# --- PARSE & MATCH ---
 def parse_and_collect(html):
     matches = []
     soup = BeautifulSoup(html, "html.parser")
 
-    # DEBUG: print a big chunk of page text
+    # DEBUG: dump the first 2000 characters of text seen by the scraper
     print("\n--- PAGE TEXT START ---\n")
-    print(soup.get_text(strip=True)[:2000])  # first 2000 characters
+    print(soup.get_text(strip=True)[:2000])
     print("\n--- PAGE TEXT END ---\n")
 
     for text in soup.find_all(string=True):
@@ -29,50 +35,33 @@ def parse_and_collect(html):
             cleaned = text.strip()
             if cleaned and cleaned not in matches:
                 matches.append(cleaned)
-            print(f"✔️ Found {len(matches)} match(es):", matches)
+
+    print(f"✔️ Found {len(matches)} match(es): {matches}")
     return matches
 
-
-
+# --- SCRAPE FUNCTION ---
 async def scrape_pages():
     all_matches = []
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context()
         page = await context.new_page()
 
         await page.goto(URL, wait_until="domcontentloaded", timeout=60000)
-        await page.wait_for_selector("text=DETERMINA_A_CONTRARRE_GIFRAN.pdf", timeout=15000)
-        
-        # First page
+
+        # Wait 5 seconds to allow JS to render the table
+        await page.wait_for_timeout(5000)
+
         html = await page.content()
         all_matches.extend(parse_and_collect(html))
 
-        while True:
-            try:
-                # Try clicking "Successivo" (Next)
-                next_button = await page.query_selector('a:has-text("Successivo")')
-                if not next_button:
-                    break
-                is_disabled = await next_button.get_attribute("class")
-                if is_disabled and "disabled" in is_disabled:
-                    break
-                await next_button.click()
-                await page.wait_for_timeout(2000)  # wait for page to load
-
-                html = await page.content()
-                matches = parse_and_collect(html)
-                if not matches:
-                    break
-                all_matches.extend(matches)
-            except Exception as e:
-                print(f"Error during pagination: {e}")
-                break
+        # Pagination logic can go here if needed — skipping for now
 
         await browser.close()
     return list(set(all_matches))
 
-
+# --- EMAIL FUNCTION ---
 def send_email(matches):
     if matches:
         subject = f"[Monitor] FOUND matches – {datetime.datetime.now():%Y-%m-%d %H:%M}"
@@ -91,10 +80,9 @@ def send_email(matches):
         smtp.login(EMAIL_SENDER, EMAIL_PASSWORD)
         smtp.send_message(msg)
 
-    print(f"Email sent to {EMAIL_RECEIVER}. Matches found: {len(matches)}")
+    print(f"📧 Email sent to {EMAIL_RECEIVER}. Matches: {len(matches)}")
 
-
-
+# --- MAIN ---
 if __name__ == "__main__":
     try:
         found_matches = asyncio.run(scrape_pages())
