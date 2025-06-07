@@ -1,16 +1,16 @@
 name: Run Bando Monitor
 
 on:
+  workflow_dispatch:
   schedule:
-    - cron: '0 11,21 * * *'  # Runs at 11:00 and 21:00 UTC every day
-  workflow_dispatch:       # Allow manual run
+    - cron: '0 11,21 * * *'  # Twice daily (UTC 11:00 and 21:00)
 
 jobs:
-  run-script:
+  monitor:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
+    - name: Checkout repo
       uses: actions/checkout@v3
 
     - name: Set up Python
@@ -19,9 +19,11 @@ jobs:
         python-version: '3.11'
 
     - name: Install dependencies
-      run: pip install requests beautifulsoup4
+      run: |
+        pip install beautifulsoup4 playwright
+        playwright install chromium
 
-    - name: Run the script
+    - name: Run monitor script
       env:
         EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
         EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
