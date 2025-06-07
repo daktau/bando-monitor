@@ -65,21 +65,25 @@ async def scrape_pages():
 
 
 def send_email(matches):
-    if not matches:
-        print("No matches found. No email sent.")
-        return
+    if matches:
+        subject = f"[Monitor] FOUND matches – {datetime.datetime.now():%Y-%m-%d %H:%M}"
+        body = "\n\n".join(matches)
+    else:
+        subject = f"[Monitor] No matches found – {datetime.datetime.now():%Y-%m-%d %H:%M}"
+        body = "The monitoring script ran successfully, but found no keyword matches on the site."
 
     msg = EmailMessage()
-    msg["Subject"] = f"[Monitor] Keyword Matches – {datetime.datetime.now():%Y-%m-%d %H:%M}"
+    msg["Subject"] = subject
     msg["From"] = EMAIL_SENDER
     msg["To"] = EMAIL_RECEIVER
-    msg.set_content("\n\n".join(matches))
+    msg.set_content(body)
 
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
         smtp.login(EMAIL_SENDER, EMAIL_PASSWORD)
         smtp.send_message(msg)
 
-    print(f"Email sent to {EMAIL_RECEIVER} with {len(matches)} matches.")
+    print(f"Email sent to {EMAIL_RECEIVER}. Matches found: {len(matches)}")
+
 
 
 if __name__ == "__main__":
