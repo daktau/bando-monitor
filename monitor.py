@@ -1,10 +1,10 @@
 import os
-import requests
+import asyncio
 from bs4 import BeautifulSoup
 from email.message import EmailMessage
 import smtplib
 import datetime
-import re
+from playwright.async_api import async_playwright
 
 # --- SETTINGS ---
 URL = "https://www.trasparenzascuole.it/Public/APDPublic_ExtV2.aspx?CF=91040430190"
@@ -14,27 +14,10 @@ EMAIL_SENDER = os.environ["EMAIL_SENDER"]
 EMAIL_PASSWORD = os.environ["EMAIL_PASSWORD"]
 EMAIL_RECEIVER = os.environ["EMAIL_RECEIVER"]
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Referer": URL,
-}
 
-
-def get_form_fields(soup):
-    viewstate = soup.select_one("input[name='__VIEWSTATE']")
-    if not viewstate:
-        raise RuntimeError("Could not find __VIEWSTATE. Page structure may have changed or response is invalid.")
-
-    return {
-        "__VIEWSTATE": viewstate["value"],
-        "__VIEWSTATEGENERATOR": soup.select_one("input[name='__VIEWSTATEGENERATOR']")["value"],
-        "__EVENTVALIDATION": soup.select_one("input[name='__EVENTVALIDATION']")["value"],
-    }
-
-
-def parse_and_collect(soup):
+def parse_and_collect(html):
     matches = []
+    soup = BeautifulSoup(html, "html.parser")
     for text in soup.find_all(string=True):
         if any(keyword.lower() in text.lower() for keyword in KEYWORDS):
             cleaned = text.strip()
@@ -43,44 +26,42 @@ def parse_and_collect(soup):
     return matches
 
 
-def paginate_and_scrape():
-    session = requests.Session()
-    session.headers.update(HEADERS)
-    results = []
+async def scrape_pages():
+    all_matches = []
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context()
+        page = await context.new_page()
 
-    # First request
-    resp = session.get(URL)
-    print("\n--- DEBUG HTML RESPONSE START ---\n")
-    print(resp.text[:1500])
-    print("\n--- DEBUG HTML RESPONSE END ---\n")
+        await page.goto(URL, wait_until="networkidle")
 
-    soup = BeautifulSoup(resp.text, "html.parser")
-    results.extend(parse_and_collect(soup))
+        # First page
+        html = await page.content()
+        all_matches.extend(parse_and_collect(html))
 
-    # Pagination
-    while True:
-        try:
-            form_data = get_form_fields(soup)
-        except RuntimeError as e:
-            print(f"Form field extraction error: {e}")
-            break
+        while True:
+            try:
+                # Try clicking "Successivo" (Next)
+                next_button = await page.query_selector('a:has-text("Successivo")')
+                if not next_button:
+                    break
+                is_disabled = await next_button.get_attribute("class")
+                if is_disabled and "disabled" in is_disabled:
+                    break
+                await next_button.click()
+                await page.wait_for_timeout(2000)  # wait for page to load
 
-        form_data["__EVENTTARGET"] = "ctl00$ContentPlaceHolder1$gvDocumenti$ctl23$ctl01"
-        form_data["__EVENTARGUMENT"] = ""
+                html = await page.content()
+                matches = parse_and_collect(html)
+                if not matches:
+                    break
+                all_matches.extend(matches)
+            except Exception as e:
+                print(f"Error during pagination: {e}")
+                break
 
-        resp = session.post(URL, data=form_data)
-        soup = BeautifulSoup(resp.text, "html.parser")
-        page_results = parse_and_collect(soup)
-
-        if not page_results:
-            break
-        results.extend(page_results)
-
-        next_button = soup.find("a", string=re.compile("Successivo", re.IGNORECASE))
-        if not next_button or "disabled" in next_button.get("class", []):
-            break
-
-    return list(set(results))
+        await browser.close()
+    return list(set(all_matches))
 
 
 def send_email(matches):
@@ -101,10 +82,9 @@ def send_email(matches):
     print(f"Email sent to {EMAIL_RECEIVER} with {len(matches)} matches.")
 
 
-# --- MAIN ---
 if __name__ == "__main__":
     try:
-        found_matches = paginate_and_scrape()
+        found_matches = asyncio.run(scrape_pages())
         send_email(found_matches)
     except Exception as e:
         print(f"❌ Error: {e}")
