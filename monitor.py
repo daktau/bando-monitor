@@ -8,7 +8,7 @@ import re
 
 # --- SETTINGS ---
 URL = "https://www.trasparenzascuole.it/Public/APDPublic_ExtV2.aspx?CF=91040430190"
-KEYWORDS = ["madrelingua", "inglese", "bando"]
+KEYWORDS = ["madrelingua", "inglese", "bando", "liquidazione", "compensi"]
 
 EMAIL_SENDER = os.environ["EMAIL_SENDER"]
 EMAIL_PASSWORD = os.environ["EMAIL_PASSWORD"]
@@ -19,7 +19,7 @@ def get_form_fields(soup):
     viewstate = soup.select_one("input[name='__VIEWSTATE']")
     if not viewstate:
         raise RuntimeError("Could not find __VIEWSTATE. Page structure may have changed or response is invalid.")
-    
+
     return {
         "__VIEWSTATE": viewstate["value"],
         "__VIEWSTATEGENERATOR": soup.select_one("input[name='__VIEWSTATEGENERATOR']")["value"],
@@ -27,9 +27,8 @@ def get_form_fields(soup):
     }
 
 def parse_and_collect(soup):
-    """Collect keyword matches from page text."""
     matches = []
-    for text in soup.find_all(text=True):
+    for text in soup.find_all(string=True):
         if any(keyword.lower() in text.lower() for keyword in KEYWORDS):
             cleaned = text.strip()
             if cleaned and cleaned not in matches:
@@ -37,38 +36,40 @@ def parse_and_collect(soup):
     return matches
 
 def paginate_and_scrape():
-    """Iterate over all pages and collect results."""
     session = requests.Session()
     results = []
 
+    # First page request
     resp = session.get(URL)
 
-    """This saves the page content to a file during the first request. This can be viewed via GitHub Actions' logs or use it locally to inspect what the page actually returned."""
-    with open("debug.html", "w", encoding="utf-8") as f:
-        f.write(resp.text)
-    
-    with open("debug.html", "w", encoding="utf-8") as f:
-        f.write(resp.text)
+    # Print first part of the HTML for debugging in Actions log
+    print("\n--- DEBUG HTML RESPONSE START ---\n")
+    print(resp.text[:1500])
+    print("\n--- DEBUG HTML RESPONSE END ---\n")
+
     soup = BeautifulSoup(resp.text, "html.parser")
     results.extend(parse_and_collect(soup))
 
+    # Try navigating pages via POST
     while True:
-        # Extract form data for POST
-        form_data = get_form_fields(soup)
-        # Target "Successivo" button's ID — this may need to be adjusted if structure changes
+        try:
+            form_data = get_form_fields(soup)
+        except RuntimeError as e:
+            print(f"Form field extraction error: {e}")
+            break
+
+        # ASP.NET postback event for "Successivo"
         form_data["__EVENTTARGET"] = "ctl00$ContentPlaceHolder1$gvDocumenti$ctl23$ctl01"
         form_data["__EVENTARGUMENT"] = ""
 
-        # POST request to go to next page
         resp = session.post(URL, data=form_data)
         soup = BeautifulSoup(resp.text, "html.parser")
-
         page_results = parse_and_collect(soup)
+
         if not page_results:
             break
         results.extend(page_results)
 
-        # Stop if "Successivo" button no longer exists (last page)
         next_button = soup.find("a", string=re.compile("Successivo", re.IGNORECASE))
         if not next_button or "disabled" in next_button.get("class", []):
             break
@@ -76,8 +77,8 @@ def paginate_and_scrape():
     return list(set(results))  # Remove duplicates
 
 def send_email(matches):
-    """Send matches via email."""
     if not matches:
+        print("No matches found. No email sent.")
         return
 
     msg = EmailMessage()
@@ -90,7 +91,13 @@ def send_email(matches):
         smtp.login(EMAIL_SENDER, EMAIL_PASSWORD)
         smtp.send_message(msg)
 
+    print(f"Email sent to {EMAIL_RECEIVER} with {len(matches)} matches.")
+
 # --- MAIN ---
 if __name__ == "__main__":
-    found_matches = paginate_and_scrape()
-    send_email(found_matches)
+    try:
+        found_matches = paginate_and_scrape()
+        send_email(found_matches)
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        raise
