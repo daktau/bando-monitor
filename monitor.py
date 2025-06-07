@@ -18,12 +18,19 @@ EMAIL_RECEIVER = os.environ["EMAIL_RECEIVER"]
 def parse_and_collect(html):
     matches = []
     soup = BeautifulSoup(html, "html.parser")
+
+    # DEBUG: print a big chunk of page text
+    print("\n--- PAGE TEXT START ---\n")
+    print(soup.get_text(strip=True)[:2000])  # first 2000 characters
+    print("\n--- PAGE TEXT END ---\n")
+
     for text in soup.find_all(string=True):
         if any(keyword.lower() in text.lower() for keyword in KEYWORDS):
             cleaned = text.strip()
             if cleaned and cleaned not in matches:
                 matches.append(cleaned)
     return matches
+
 
 
 async def scrape_pages():
@@ -34,7 +41,8 @@ async def scrape_pages():
         page = await context.new_page()
 
         await page.goto(URL, wait_until="domcontentloaded", timeout=60000)
-
+        await page.wait_for_selector("table", timeout=10000)  # Wait for main table
+        
         # First page
         html = await page.content()
         all_matches.extend(parse_and_collect(html))
